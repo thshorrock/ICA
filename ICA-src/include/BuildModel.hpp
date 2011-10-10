@@ -36,6 +36,7 @@ class BuildModel //: public Model<data_t>
 {
   typedef typename ICR::EnsembleLearning::Builder<data_t>::GaussianDataNode GaussianData;
   typedef typename ICR::EnsembleLearning::Builder<data_t>::GammaDataNode GammaData;
+  typedef typename ICR::EnsembleLearning::Builder<data_t>::GammaConstNode GammaConst;
   typedef typename ICR::EnsembleLearning::Builder<data_t>::GaussianNode GaussianNode;
   typedef typename ICR::EnsembleLearning::Builder<data_t>::RectifiedGaussianNode RectifiedGaussianNode;
   typedef typename ICR::EnsembleLearning::Builder<data_t>::WeightsNode WeightsNode;
@@ -61,6 +62,7 @@ class BuildModel //: public Model<data_t>
   
 public:
   BuildModel(matrix<double>& data,
+	     const vector<double>& theNoise,
 	     const bool positive_sources,
 	     bool positive_mixing,
 	     bool noise_offset,
@@ -187,7 +189,12 @@ public:
     
     
     //    vector<GammaNode> m_noisePreceision(N);
-    build_vector(m_noisePrecision);
+    
+    for(size_t i=0;i<m_noisePrecision.size();++i){
+      m_noisePrecision[i] = m_Build.gamma_const(1.0/std::pow(theNoise[i],2));
+    }
+
+
     
 
   typedef PlaceholderFactory::make_vector<1,M> AP;
@@ -541,7 +548,7 @@ matrix<Variable> m_A;
 matrix<Variable> m_S;
 matrix<Variable> m_AtimesSplusN; 
 std::vector<noise_t> m_noiseMean;
-vector<GammaNode>     m_noisePrecision;
+vector<GammaConst>     m_noisePrecision;
 //GammaNode     m_noisePrecision;
 bool m_positive_mixing, m_positive_sources;
 data_t m_GaussianPrecision;

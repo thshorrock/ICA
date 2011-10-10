@@ -2,7 +2,7 @@
 
 #include <boost/preprocessor/arithmetic/add.hpp>
 #include <boost/preprocessor/arithmetic/mul.hpp>
-#  define ENSEMBLE_LEARNING_COMPONENTS 5
+#  define ENSEMBLE_LEARNING_COMPONENTS 6
 #  define ENSEMBLE_LEARNING_SOURCES 5
 #  define ENSEMBLE_LEARNING_PLACEHOLDERS BOOST_PP_ADD(BOOST_PP_MUL(ENSEMBLE_LEARNING_SOURCES,2),1)
 #  define FUSION_MAX_VECTOR_SIZE 25
@@ -48,6 +48,7 @@ main  (int ac, char **av)
   std::string mean_file;
   std::string sigma_file;
   std::string mixing_mean_file;
+  std::string noise_file;
   
   
   //parse the command line
@@ -70,8 +71,10 @@ main  (int ac, char **av)
      "filename containing prior knowledge of the standard-deviations")
     ("mixing-mean", po::value<std::string>(&mixing_mean_file)->default_value(""), 
      "filename containing prior knowledge of the Mixing means")
+    ("noise", po::value<std::string>(&noise_file)->default_value(""), 
+     "filename containing prior knowledge of the noise")
     ;
-  
+
   // Hidden options, will be allowed both on command line and
   // in config file, but will not be shown to the user.
   po::options_description hidden("Hidden options");
@@ -90,15 +93,15 @@ main  (int ac, char **av)
      "Assume that the sources are strictly positive")
     ("positive-mixing",  
      "Assume that the mixing matrix is strictly positive")
-    ("noise-offset", 
+    ("offset-noise", 
      "Allow the noise to have a non-zero mean")
     ("convergence,c", po::value<double>(&convergence_criterium)->default_value(1e-3), 
      "The change in evidence when the model is assumed to have converged")
-    ("iterations,i", po::value<size_t>(&max_iterations)->default_value(1000), 
+    ("iterations,i", po::value<size_t>(&max_iterations)->default_value(10), 
      "The maximum number of interations")
-    ("Gaussian-precision", po::value<double>(&GaussianPrecision)->default_value(0.01), 
+    ("Gaussian-precision", po::value<double>(&GaussianPrecision)->default_value(10000), 
      "The precision of the Gaussian Priors in the model")
-    ("Gamma-precision", po::value<double>(&GammaPrecision)->default_value(0.01), 
+    ("Gamma-precision", po::value<double>(&GammaPrecision)->default_value(10000), 
      "The precision of the Gamma Priors in the model")
     ("transpose-priors",  
      "Transpose the data in the mean and sigma prior data files")
@@ -154,12 +157,15 @@ main  (int ac, char **av)
     positive_source = true;
   if (vm.count("positive-mixing")) 
     positive_mixing = true;
-  if (vm.count("noise-offset")) 
+  if (vm.count("offset-noise")) 
     model_noise_offset = true;
   if (vm.count("transpose-priors")) 
     transpose_priors = true;
   if (vm.count("transpose-mixing")) 
     transpose_mixing = true;
+
+  std::cout<<"input file = "<<data_file<<std::endl;
+  std::cout<<"noise file = "<<noise_file<<std::endl;
 
 
   if ( !fs::exists(output_directory) ) {
@@ -168,8 +174,42 @@ main  (int ac, char **av)
     return 1;
   }
 
-  //check to see if mean file inputted
-  matrix<double> Means;
+  //check to see if noise file inputted
+  vector<double> Noise;
+  {
+    if (!fs::exists(noise_file))  { //wrong filename
+      std::cout << "The file containing the noises: '"<<noise_file<<"' does not exist!\n\n"
+		<< visible  << "\n";
+      return 1;
+    }
+    //load the data.
+    std::cout<<"loading noises"<<std::endl;
+    std::string line;
+    std::ifstream myfile (noise_file.c_str());
+    std::deque<double> data;
+    while ( getline( myfile, line ) )
+      {
+	std::stringstream ss(line);
+	std::vector<double> v;
+	std::copy( 
+		  std::istream_iterator<double>(ss), 
+		  std::istream_iterator<double>( ),
+		  std::back_inserter(v)
+		   ); // copies all data into bufferdata[i]
+	data.insert(data.end(), v.begin(), v.end());
+      }
+    
+    const size_t size = data.size();
+      
+    Noise = vector<double>(size);
+    for(size_t r=0;r<Noise.size();++r){
+      Noise(r) = data[r];
+    }
+  }
+
+
+//check to see if mean file inputted
+matrix<double> Means;
   if ( mean_file != "") {
     if (!fs::exists(mean_file))  { //wrong filename
       std::cout << "The file '"<<mean_file<<"' does not exist!\n\n"
@@ -467,65 +507,77 @@ main  (int ac, char **av)
 
   
 
-  if (use_float) 
-    {
-      // std::cout<<"Building Model"<<std::endl;
-      // BuildModel<float, assumed_sources, mixing_components> 
-      // 	Model(Data, 
-      // 	      positive_source,
-      // 	      positive_mixing,
-      // 	      model_noise_offset,
-      // 	      GaussianPrecision,
-      // 	      GammaPrecision
-      // 	      );
-      // size_t size1 = Data.size1();
-      // size_t size2 = Data.size2();
-      // Data = matrix<float>(); //clear the memory (clear function doesn't do this)
+  // if (use_float) 
+  //   {
+  //     std::cout<<"Building Model"<<std::endl;
+  //     BuildModel<float, assumed_sources, mixing_components> 
+  //     	Model(Data, 
+  // 	      Noise,
+  //     	      positive_source,
+  //     	      positive_mixing,
+  //     	      model_noise_offset,
+  //     	      GaussianPrecision,
+  //     	      GammaPrecision
+  //     	      );
+  //     size_t size1 = Data.size1();
+  //     size_t size2 = Data.size2();
+  //     Data = matrix<float>(); //clear the memory (clear function doesn't do this)
 
-      // {
+  // // if (mean_file !="") 
+  // //   Model.set_means(Means);
+  // // if (sigma_file != "")
+  // //   Model.set_sigmas(Sigmas);
+  // // if (mixing_mean_file != "")
+  //   // Model.set_mixing_mean(MixingMean);
+  //     {
 	
-      // 	std::ofstream sources(source_file.string().c_str());
-      // 	std::ofstream mixing_matrix(mixing_file.string().c_str());
-      // 	std::ofstream result_matrix(result_file.string().c_str());
-      // 	std::ofstream result_matrix2(result_file2.string().c_str());
-      // 	matrix<float> A(size1, assumed_sources);
-      // 	matrix<float> S(assumed_sources,size2);
-      // 	Model.get_normalised_means(A,S);
-      // 	sources<<S;
-      // 	mixing_matrix<< matrix<float>(trans(A));
-      // 	result_matrix<<Model.get_results();
-      // 	result_matrix2<< matrix<float>(prod(A,S));
-      // }
+  //     	std::ofstream sources(source_file.string().c_str());
+  //     	std::ofstream mixing_matrix(mixing_file.string().c_str());
+  //     	std::ofstream result_matrix(result_file.string().c_str());
+  //     	std::ofstream result_matrix2(result_file2.string().c_str());
+  // 	std::ofstream precisions(precisions_file.string().c_str());
+  //     	matrix<float> A(size1, assumed_sources);
+  //     	matrix<float> S(assumed_sources,size2);
+  //     	Model.get_normalised_means(A,S);
+  //     	sources<<S;
+  //     	mixing_matrix<< matrix<float>(trans(A));
+  //     	result_matrix<<Model.get_results();
+  //     	result_matrix2<< matrix<float>(prod(A,S));
+  // 	precisions<<Model.get_noise_precision();
+  //     }
       
-      // ICR::EnsembleLearning::Builder<float> Build = Model.get_builder();
-      // Build.set_cost_file(cost_file.string());
-      // std::cout<<"Running!"<<std::endl;
-      // bool converged = false;
-      // size_t count = 0;
-      // while(!converged && count<500) {
-      // 	converged = Build.run(convergence_criterium,max_iterations);
+  //     ICR::EnsembleLearning::Builder<float> Build = Model.get_builder();
+  //     Build.set_cost_file(cost_file.string());
+  //     std::cout<<"Running!"<<std::endl;
+  //     bool converged = false;
+  //     size_t count = 0;
+  //     while(!converged && count<500) {
+  //     	converged = Build.run(convergence_criterium,max_iterations);
 
-      // 	std::ofstream sources(source_file.string().c_str());
-      // 	std::ofstream mixing_matrix(mixing_file.string().c_str());
-      // 	std::ofstream result_matrix(result_file.string().c_str());
-      // 	std::ofstream result_matrix2(result_file2.string().c_str());
+  //     	std::ofstream sources(source_file.string().c_str());
+  //     	std::ofstream mixing_matrix(mixing_file.string().c_str());
+  //     	std::ofstream result_matrix(result_file.string().c_str());
+  //     	std::ofstream result_matrix2(result_file2.string().c_str());
+  // 	std::ofstream precisions(precisions_file.string().c_str());
 
-      // 	matrix<float> A(size1, assumed_sources);
-      // 	matrix<float> S(assumed_sources,size2);
-      // 	Model.get_normalised_means(A,S);
-      // 	sources<<S;
-      // 	mixing_matrix<< matrix<float>(trans(A));
-      // 	result_matrix<<Model.get_results();
-      // 	result_matrix2<< matrix<float>(prod(A,S));
-      // 	++count;
-      // }
-    }
-  else
+  //     	matrix<float> A(size1, assumed_sources);
+  //     	matrix<float> S(assumed_sources,size2);
+  //     	Model.get_normalised_means(A,S);
+  //     	sources<<S;
+  //     	mixing_matrix<< matrix<float>(trans(A));
+  //     	result_matrix<<Model.get_results();
+  //     	result_matrix2<< matrix<float>(prod(A,S));
+  // 	precisions<<Model.get_noise_precision();
+  //     	++count;
+  //     }
+  //   }
+  //else
     {
 
   std::cout<<"Building Model"<<std::endl;
   BuildModel<double, assumed_sources, mixing_components> 
     Model(Data, 
+  	  Noise,
   	  positive_source,
   	  positive_mixing,
   	  model_noise_offset,
@@ -586,5 +638,5 @@ main  (int ac, char **av)
     precisions<<Model.get_noise_precision();
       ++count;
   }
-  }
+    }
 }
